@@ -135,5 +135,9 @@ all.config
 # fetched Android config fragments
 kernel/configs/android-*.cfg
 
-# Object directory
+# Ignoring build files
 out/
+tc/
+*.zip
+error.log
+log.txt
