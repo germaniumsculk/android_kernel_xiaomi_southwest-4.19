@@ -195,15 +195,13 @@ int vfs_statx(int dfd, const char __user *filename, int flags,
 	struct path path;
 	int error = -EINVAL;
 	unsigned int lookup_flags = LOOKUP_FOLLOW | LOOKUP_AUTOMOUNT;
-
-        #ifdef CONFIG_KSU
-	  ksu_handle_stat(&dfd, &filename, &flags);
-        #endif
-
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 	struct mount *mnt;
 #endif
 
+#ifdef CONFIG_KSU
+	ksu_handle_stat(&dfd, &filename, &flags);
+#endif
 
 	if ((flags & ~(AT_SYMLINK_NOFOLLOW | AT_NO_AUTOMOUNT |
 		       AT_EMPTY_PATH | KSTAT_QUERY_FLAGS)) != 0)
@@ -225,7 +223,9 @@ retry:
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 	mnt = real_mount(path.mnt);
 	if (likely(susfs_is_current_non_root_user_app_proc())) {
-		for (; mnt->mnt_id >= DEFAULT_SUS_MNT_ID; mnt = mnt->mnt_parent) {}
+		for (; mnt->mnt_id >= DEFAULT_SUS_MNT_ID; mnt = mnt->mnt_parent) {
+			/* walk up until non-SUS mount */
+		}
 	}
 	stat->mnt_id = mnt->mnt_id;
 #else
@@ -239,7 +239,6 @@ out:
 	return error;
 }
 EXPORT_SYMBOL(vfs_statx);
-
 
 #ifdef __ARCH_WANT_OLD_STAT
 
