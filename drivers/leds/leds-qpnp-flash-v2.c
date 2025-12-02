@@ -1658,13 +1658,15 @@ static int qpnp_flash_led_module_enable(struct flash_switch_data *snode)
 	return rc;
 }
 
-static int qpnp_flash_led_switch_set(struct flash_switch_data *snode, bool on)
+static int qpnp_flash_led_switch_set(struct flash_switch_data *snode,
+				int value) /* Changed from bool on */
 {
 	struct qpnp_flash_led *led = dev_get_drvdata(&snode->pdev->dev);
 	struct flash_node_data fnode;
 	int rc, i, addr_offset;
 	u8 val, mask;
 	bool torch_current_update = false;
+    bool on = (value > 0); /* Calculate 'on' for existing logic */
 
 	if (snode->enabled == on) {
 		if (on && led->torch_current_update) {
@@ -1689,6 +1691,22 @@ static int qpnp_flash_led_switch_set(struct flash_switch_data *snode, bool on)
 		rc = qpnp_flash_led_switch_disable(snode);
 		return rc;
 	}
+
+    /* PATCH: Apply brightness 'value' to all Torch nodes controlled by this switch */
+    if (value > 0) {
+        for (i = 0; i < led->num_fnodes; i++) {
+            // Check if this LED is controlled by this switch
+            if (snode->led_mask & BIT(led->fnode[i].id)) {
+                
+                // Only update TORCH nodes (ignore Flash nodes to prevent conflicts)
+                if (led->fnode[i].type == FLASH_LED_TYPE_TORCH) {
+                    qpnp_flash_led_node_set(&led->fnode[i], value);
+                    led->fnode[i].led_on = true;
+                }
+            }
+        }
+    }
+    /* END PATCH */
 
 	/* Iterate over all active leds for this switch node */
 	if (snode->symmetry_en) {
@@ -1726,24 +1744,13 @@ static int qpnp_flash_led_switch_set(struct flash_switch_data *snode, bool on)
 		}
 		return 0;
 	}
-/* PATCH: Force update current from brightness value before enabling */
-	for (i = 0; i < led->num_fnodes; i++) {
-		if ((snode->led_mask & BIT(led->fnode[i].id)) &&
-			led->fnode[i].cdev.brightness > 0) {
-			qpnp_flash_led_node_set(&led->fnode[i],
-				led->fnode[i].cdev.brightness);
-		}
-	}
-	/* END PATCH */
+
 	val = 0;
 	for (i = 0; i < led->num_fnodes; i++) {
 		if (!led->fnode[i].led_on ||
 				!(snode->led_mask & BIT(led->fnode[i].id)))
 			continue;
-/* PATCH: Ignore FLASH type nodes when using the Switch (Torch Mode) */
-		if (led->fnode[i].type == FLASH_LED_TYPE_FLASH)
-			continue;
-		
+
 		addr_offset = led->fnode[i].id;
 		if (led->fnode[i].strobe_sel == SW_STROBE)
 			mask = FLASH_LED_HW_SW_STROBE_SEL_BIT;
@@ -1961,7 +1968,7 @@ static void qpnp_flash_led_brightness_set(struct led_classdev *led_cdev,
 
 	spin_lock(&led->lock);
 	if (snode) {
-		rc = qpnp_flash_led_switch_set(snode, value > 0);
+		rc = qpnp_flash_led_switch_set(snode, value);
 		if (rc < 0)
 			pr_err("Failed to set flash LED switch rc=%d\n", rc);
 	} else if (fnode) {
