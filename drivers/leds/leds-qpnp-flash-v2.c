@@ -1750,6 +1750,9 @@ static int qpnp_flash_led_switch_set(struct flash_switch_data *snode,
 		if (!led->fnode[i].led_on ||
 				!(snode->led_mask & BIT(led->fnode[i].id)))
 			continue;
+		/* CRITICAL FIX: Ignore Flash nodes so they don't overwrite Torch brightness */
+        if (led->fnode[i].type == FLASH_LED_TYPE_FLASH)
+            continue;
 
 		addr_offset = led->fnode[i].id;
 		if (led->fnode[i].strobe_sel == SW_STROBE)
